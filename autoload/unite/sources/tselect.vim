@@ -33,126 +33,25 @@ let s:source = {
 	\ 'hooks': {}
 	\ }
 
-" {{{ tselect parser
-
-function! s:parse_tselect_line_is_entry(line, columns)
-	let l:number = s:parse_tselect_entry_get_number(a:line, a:columns)
-	return l:number != 0
-endfunction
-
-function! s:parse_tselect_entry_get_is_current(line, columns)
-	return a:line[a:columns.current] == '>'
-endfunction
-
-function! s:parse_tselect_entry_get_number(line, columns)
-	try
-		return eval(a:line[a:columns.current + 1 : a:columns.number + 1])
-	catch
-		return 0
-	endtry
-endfunction
-
-function! s:parse_tselect_entry_get_priority(line, columns)
-	return a:line[a:columns.priority : a:columns.kind - 1]
-endfunction
-
-function! s:parse_tselect_entry_get_kind(line, columns)
-	return a:line[a:columns.kind : a:columns.tag - 1]
-endfunction
-
-function! s:parse_tselect_entry_get_tag(line, columns)
-	return a:line[a:columns.tag : a:columns.file - 1]
-endfunction
-
-function! s:parse_tselect_entry_get_file(line, columns)
-	return a:line[a:columns.file:]
-endfunction
-
-function! s:parse_tselect_entry(line, columns)
-	return {
-		\ 'is_current': s:parse_tselect_entry_get_is_current(a:line, a:columns),
-		\ 'number': s:parse_tselect_entry_get_number(a:line, a:columns),
-		\ 'kind': s:parse_tselect_entry_get_kind(a:line, a:columns),
-		\ 'priority': s:parse_tselect_entry_get_priority(a:line, a:columns),
-		\ 'tag': s:parse_tselect_entry_get_tag(a:line, a:columns),
-		\ 'file': s:parse_tselect_entry_get_file(a:line, a:columns),
-		\ 'lines': []
-		\ }
-endfunction
-
-function s:parse_tselect_header(line)
-	return {
-		\ 'current': 0,
-		\ 'number': match(a:line, '#', 0),
-		\ 'priority': match(a:line, 'pri', 0),
-		\ 'kind': match(a:line, 'kind', 0),
-		\ 'tag': match(a:line, 'tag', 0),
-		\ 'file': match(a:line, 'file', 0)
-		\ }
-endfunction
-
-function! s:parse_tselect(str)
-	let l:result = []
-
-	" convert to list
-	let l:strlist= split(a:str, '\n')
-
-	" split into header and entries
-	let l:header = l:strlist[0]
-	let l:entries = l:strlist[1:-2]
-
-	" header columns, used to split entry
-	let l:columns = s:parse_tselect_header(l:header)
-
-	let l:i = 0
-	let l:item = {}
-	while l:i < len(l:entries)
-		if s:parse_tselect_line_is_entry(l:entries[l:i], columns)
-			if !empty(l:item)
-				call add(l:result, l:item)
-				let l:item = {}
-			endif
-			let l:item = s:parse_tselect_entry(l:entries[l:i], columns)
-		else
-			if has_key(l:item, 'lines')
-				call add(l:item.lines, l:entries[l:i])
-			endif
-		endif
-		let l:i += 1
-	endwhile
-	if !empty(l:item)
-		call add(l:result, l:item)
-		let l:item = {}
-	endif
-
-	return l:result
-endfunction
-
-" }}}
-
 function! s:source.hooks.on_init(args, context)
+endfunction
+
+function! s:format_tag(tag)
+	return '['. a:tag.kind . '] ' . a:tag.name . '   ' . a:tag.cmd . '   ' . a:tag.filename
 endfunction
 
 function! s:source.gather_candidates(args, context)
 	let l:result = []
+	let l:expr = get(a:args, 0, '') " FIXME: defaults to last used tag
 
-	let l:expr = get(a:args, 0, '')
-	redir => l:tselect
-	execute 'silent! tselect' l:expr
-	redir END
-
-	let l:candidates = s:parse_tselect(l:tselect)
-	for l:candidate in l:candidates
-		let l:title = printf('%d %s %s %s %s', l:candidate.number, l:candidate.priority, l:candidate.kind, l:candidate.tag, l:candidate.file)
-		for l:line in l:candidate.lines
-			let l:title .= '     ' . l:line
-		endfor
+	let l:taglist = taglist(l:expr)
+	for l:tag in l:taglist
 		let l:item = {
-			\ 'word': l:title,
+			\ 'word': s:format_tag(l:tag),
 			\ 'source': 'tselect',
-			\ 'kind': 'tag_jump',
-			\ 'action__tselect': l:expr,
-			\ 'action__number': l:candidate.number
+			\ 'kind': 'tag_list',
+			\ 'action__tag_cmd': l:tag.cmd,
+			\ 'action__tag_filename': l:tag.filename
 			\ }
 		call add(l:result, l:item)
 	endfor
